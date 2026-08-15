@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pour Clémence — Le carnet de souvenirs</title>
+<meta name="description" content="Dépose tes photos, vidéos et mots doux pour l'anniversaire de Clémence." />
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- Tailwind CDN -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          plum: { DEFAULT: '#2C1B33', light: '#3B2545', dark: '#1E1224' },
+          gold: { DEFAULT: '#E8B23D', light: '#F3CD73' },
+          blush: { DEFAULT: '#F2A6B0', light: '#F9D6DB' },
+          teal: { DEFAULT: '#3E8983', dark: '#2C625D' },
+          cream: '#FBF3E7',
+        },
+        fontFamily: {
+          display: ['Fraunces', 'serif'],
+          body: ['Sora', 'sans-serif'],
+        },
+      },
+    },
+  }
+</script>
+
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body class="bg-plum text-cream font-body min-h-screen antialiased">
+
+  <!-- ============ GARLAND SIGNATURE ELEMENT ============ -->
+  <div class="garland" aria-hidden="true">
+    <svg viewBox="0 0 1200 90" preserveAspectRatio="none" class="garland-svg">
+      <path d="M0,10 Q300,90 600,10 T1200,10" fill="none" stroke="#E8B23D" stroke-width="2" opacity="0.55"/>
+    </svg>
+    <span class="flag flag-1"></span>
+    <span class="flag flag-2"></span>
+    <span class="flag flag-3"></span>
+    <span class="flag flag-4"></span>
+    <span class="flag flag-5"></span>
+    <span class="flag flag-6"></span>
+    <span class="flag flag-7"></span>
+  </div>
+
+  <!-- ============ HERO ============ -->
+  <header class="relative px-6 pt-16 pb-14 sm:pt-20 sm:pb-20 text-center overflow-hidden">
+    <p class="uppercase tracking-[0.3em] text-xs sm:text-sm text-blush/80 mb-4">Le grand carnet de bord</p>
+    <h1 class="font-display italic font-medium text-4xl sm:text-6xl md:text-7xl leading-tight text-cream">
+      Joyeux anniversaire,<br class="hidden sm:block" /> <span class="text-gold not-italic font-semibold">Clémence</span> ✦
+    </h1>
+    <p class="mt-6 max-w-xl mx-auto text-cream/80 text-base sm:text-lg">
+      On rassemble ici les photos, les vidéos et les petits mots de tout le monde.
+      Dépose ta contribution ci-dessous, elle rejoindra le carnet de Clémence pour toujours.
+    </p>
+  </header>
+
+  <main class="px-4 sm:px-6 max-w-4xl mx-auto pb-24">
+
+    <!-- ============ UPLOAD ZONE ============ -->
+    <section class="bg-cream text-plum rounded-3xl shadow-2xl shadow-black/30 p-6 sm:p-10 -mt-4 relative z-10">
+      <div class="flex items-center justify-between flex-wrap gap-3 mb-6">
+        <div>
+          <h2 class="font-display text-2xl sm:text-3xl font-semibold">Dépose un souvenir</h2>
+          <p class="text-plum/60 text-sm mt-1">Photos, vidéos, PDF, mots doux… tout est bienvenu.</p>
+        </div>
+        <div id="currentUserBadge" class="hidden items-center gap-2 bg-plum/5 border border-plum/10 rounded-full px-4 py-2 text-sm">
+          <span class="w-2 h-2 rounded-full bg-teal"></span>
+          <span>Connecté·e en tant que <strong id="currentUserName" class="font-semibold"></strong></span>
+          <button id="changeNameBtn" class="text-teal underline decoration-dotted hover:text-teal-dark ml-1" type="button">changer</button>
+        </div>
+      </div>
+
+      <form id="uploadForm">
+        <div id="dropzone" class="dropzone group">
+          <input type="file" id="fileInput" name="files" multiple class="hidden" />
+          <div class="flex flex-col items-center justify-center text-center gap-3 py-10 sm:py-14 px-4">
+            <div class="text-5xl transition-transform group-hover:-translate-y-1">🎉</div>
+            <p class="font-display text-lg sm:text-xl font-medium">Glisse tes fichiers ici</p>
+            <p class="text-plum/50 text-sm">ou <span class="text-teal font-semibold underline decoration-dotted">clique pour parcourir</span> — plusieurs fichiers acceptés</p>
+          </div>
+        </div>
+
+        <ul id="fileList" class="mt-4 space-y-2"></ul>
+
+        <div class="mt-6 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <button type="submit" id="submitBtn" class="flex-1 bg-teal hover:bg-teal-dark text-cream font-semibold rounded-xl px-6 py-3.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            Envoyer mes souvenirs
+          </button>
+        </div>
+
+        <div id="uploadStatus" class="mt-4 text-sm hidden"></div>
+      </form>
+    </section>
+
+    <!-- ============ RÉSUMÉ PAR PERSONNE ============ -->
+    <section class="mt-14">
+      <h2 class="font-display text-2xl sm:text-3xl font-semibold text-cream text-center">Qui a participé ?</h2>
+      <p class="text-cream/60 text-center text-sm mt-2 mb-8">Le registre de tous les souvenirs déposés pour Clémence.</p>
+
+      <div id="summaryGrid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      <p id="summaryEmpty" class="hidden text-center text-cream/50 italic mt-6">Personne n'a encore déposé de souvenir… sois le premier ✦</p>
+    </section>
+
+    <!-- ============ FIL D'ACTUALITÉ ============ -->
+    <section class="mt-16">
+      <h2 class="font-display text-2xl sm:text-3xl font-semibold text-cream text-center">Le fil des dépôts</h2>
+      <p class="text-cream/60 text-center text-sm mt-2 mb-8">Chaque envoi, dans l'ordre.</p>
+
+      <ol id="feedList" class="space-y-4"></ol>
+    </section>
+  </main>
+
+  <footer class="text-center text-cream/40 text-xs pb-10 px-6">
+    Fait avec 💛 pour Clémence — tous les fichiers sont conservés en lieu sûr.
+  </footer>
+
+  <!-- ============ MODALE PRÉNOM ============ -->
+  <div id="nameModalOverlay" class="modal-overlay hidden">
+    <div class="modal-card">
+      <p class="text-4xl mb-3">🎈</p>
+      <h2 class="font-display text-2xl font-semibold text-plum mb-2">Avant de commencer…</h2>
+      <p class="text-plum/60 text-sm mb-6">Comment veux-tu qu'on te reconnaisse dans le carnet de Clémence ?</p>
+      <form id="nameForm" class="flex flex-col gap-3">
+        <input
+          id="nameInput"
+          type="text"
+          maxlength="40"
+          placeholder="Ton prénom ou surnom"
+          class="w-full rounded-xl border border-plum/15 px-4 py-3 text-plum focus:outline-none focus:ring-2 focus:ring-teal"
+          required
+        />
+        <button type="submit" class="bg-teal hover:bg-teal-dark text-cream font-semibold rounded-xl px-6 py-3 transition-colors">
+          C'est parti !
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div id="previewModalOverlay" class="modal-overlay hidden" aria-modal="true" role="dialog">
+    <div class="preview-modal-card">
+      <button type="button" id="closePreviewBtn" class="preview-close" aria-label="Fermer la prévisualisation">✕</button>
+      <img id="previewModalImage" class="hidden preview-media preview-image" alt="Aperçu plein écran" />
+      <video id="previewModalVideo" class="hidden preview-media preview-video" controls playsinline></video>
+      <audio id="previewModalAudio" class="hidden preview-media preview-audio" controls></audio>
+      <a id="previewDownloadLink" class="preview-download hidden" href="#" download>⬇ Télécharger</a>
+    </div>
+  </div>
+
+  <!-- Template pour un item du fil (utilisé par JS) -->
+  <template id="feedItemTemplate">
+    <li class="feed-item">
+      <div class="feed-icon"></div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm text-cream/90">
+          <strong class="feed-author font-semibold"></strong>
+          a déposé <span class="feed-filename font-medium"></span>
+        </p>
+        <p class="text-xs text-cream/40 feed-date mt-0.5"></p>
+      </div>
+      <a class="feed-download" href="#" download aria-label="Télécharger ce fichier">Télécharger</a>
+    </li>
+  </template>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
