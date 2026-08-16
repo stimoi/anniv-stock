@@ -20,9 +20,11 @@ const PORT = process.env.PORT || 3000;
 const STORAGE_MODE = (process.env.STORAGE_MODE || 'SFTP').toUpperCase(); // 'FTP' | 'SFTP'
 const MAX_FILE_SIZE_MB = parseInt(process.env.MAX_FILE_SIZE_MB || '200', 10);
 const PUBLIC_FILE_BASE_URL = (process.env.PUBLIC_FILE_BASE_URL || '').replace(/\/+$/, '');
+const BACKUP_INTERVAL_MS = parseInt(process.env.CONTRIBUTIONS_BACKUP_INTERVAL_MS || '30000', 10);
 
 const DATA_DIR = path.join(__dirname, 'data');
 const CONTRIBUTIONS_FILE = path.join(DATA_DIR, 'contributions.json');
+const BACKUP_REMOTE_FILENAME = 'contributions.json';
 const TMP_UPLOAD_DIR = path.join(__dirname, 'tmp_uploads');
 
 // S'assure que les dossiers/fichiers nécessaires existent au démarrage
@@ -59,6 +61,24 @@ function appendContribution(entry) {
     await fsp.writeFile(CONTRIBUTIONS_FILE, JSON.stringify(current, null, 2), 'utf-8');
   });
   return writeQueue;
+}
+
+async function backupContributionsToRemote() {
+  try {
+    if (!fs.existsSync(CONTRIBUTIONS_FILE)) {
+      ensureLocalStructure();
+    }
+
+    const fileStats = fs.statSync(CONTRIBUTIONS_FILE);
+    if (!fileStats || fileStats.size === 0) {
+      fs.writeFileSync(CONTRIBUTIONS_FILE, JSON.stringify([], null, 2), 'utf-8');
+    }
+
+    await uploadToRemoteStorage(CONTRIBUTIONS_FILE, BACKUP_REMOTE_FILENAME);
+    console.log(`💾 Sauvegarde du registre ${BACKUP_REMOTE_FILENAME} envoyée vers ${STORAGE_MODE} (${new Date().toLocaleTimeString('fr-FR')})`);
+  } catch (err) {
+    console.error('⚠️ Échec de la sauvegarde automatique du registre :', err.message || err);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -418,6 +438,13 @@ app.get('/api/health', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🎉 Site anniversaire de Clémence lancé sur http://localhost:${PORT}`);
+  console.log(`🎉 Site anniversaire de Joël lancé sur http://localhost:${PORT}`);
   console.log(`📦 Mode de stockage distant : ${STORAGE_MODE}`);
+  console.log(`💾 Sauvegarde automatique du registre toutes les ${Math.round(BACKUP_INTERVAL_MS / 1000)}s`);
+
+  // Synchronisation immédiate au démarrage pour que le stock distant soit à jour dès le lancement.
+  backupContributionsToRemote();
+  setInterval(() => {
+    backupContributionsToRemote();
+  }, BACKUP_INTERVAL_MS);
 });
