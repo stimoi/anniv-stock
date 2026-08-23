@@ -145,16 +145,6 @@
     </div>
   </div>
 
-  <div id="previewModalOverlay" class="modal-overlay hidden" aria-modal="true" role="dialog">
-    <div class="preview-modal-card">
-      <button type="button" id="closePreviewBtn" class="preview-close" aria-label="Fermer la prévisualisation">✕</button>
-      <img id="previewModalImage" class="hidden preview-media preview-image" alt="Aperçu plein écran" />
-      <video id="previewModalVideo" class="hidden preview-media preview-video" controls playsinline></video>
-      <audio id="previewModalAudio" class="hidden preview-media preview-audio" controls></audio>
-      <a id="previewDownloadLink" class="preview-download hidden" href="#" download>⬇ Télécharger</a>
-    </div>
-  </div>
-
   <!-- Template pour un item du fil (utilisé par JS) -->
   <template id="feedItemTemplate">
     <li class="feed-item">
@@ -166,7 +156,6 @@
         </p>
         <p class="text-xs text-cream/40 feed-date mt-0.5"></p>
       </div>
-      <a class="feed-download" href="#" download aria-label="Télécharger ce fichier">Télécharger</a>
     </li>
   </template>
 

@@ -25,16 +25,8 @@
   const summaryEmpty = document.getElementById('summaryEmpty');
   const feedList = document.getElementById('feedList');
   const feedItemTemplate = document.getElementById('feedItemTemplate');
-  const previewModalOverlay = document.getElementById('previewModalOverlay');
-  const previewModalImage = document.getElementById('previewModalImage');
-  const previewModalVideo = document.getElementById('previewModalVideo');
-  const previewModalAudio = document.getElementById('previewModalAudio');
-  const previewDownloadLink = document.getElementById('previewDownloadLink');
-  const closePreviewBtn = document.getElementById('closePreviewBtn');
 
   let selectedFiles = [];
-  const previewUrls = new Map();
-  const localPreviewById = new Map();
 
   const AVATAR_COLORS = ['#F2A6B0', '#E8B23D', '#3E8983', '#C97B84', '#D9A441', '#5AA39C'];
 
@@ -123,34 +115,7 @@
     renderFileList();
   }
 
-  function getFilePreviewKey(file) {
-    return `${file.name}-${file.size}-${file.lastModified}`;
-  }
-
-  function getFilePreviewUrl(file) {
-    if (!file || (!file.type.startsWith('image/') && !file.type.startsWith('video/'))) return null;
-
-    const key = getFilePreviewKey(file);
-    if (!previewUrls.has(key)) {
-      previewUrls.set(key, URL.createObjectURL(file));
-    }
-    return previewUrls.get(key);
-  }
-
-  function revokeFilePreviewUrl(file) {
-    if (!file) return;
-
-    const key = getFilePreviewKey(file);
-    const url = previewUrls.get(key);
-    if (url) {
-      URL.revokeObjectURL(url);
-      previewUrls.delete(key);
-    }
-  }
-
   function removeFile(index) {
-    const file = selectedFiles[index];
-    revokeFilePreviewUrl(file);
     selectedFiles.splice(index, 1);
     renderFileList();
   }
@@ -173,21 +138,11 @@
     selectedFiles.forEach((file, index) => {
       const li = document.createElement('li');
       li.className = 'file-chip';
-
-      const previewUrl = getFilePreviewUrl(file);
-      const previewMarkup = previewUrl
-        ? (file.type.startsWith('image/')
-          ? `<img src="${previewUrl}" alt="${escapeHtml(file.name)}" class="file-thumb" />`
-          : `<video src="${previewUrl}" muted playsinline class="file-thumb video-thumb"></video>`)
-        : `<span class="file-thumb file-thumb--fallback">${fileEmoji(file)}</span>`;
-
       li.innerHTML = `
-        <span class="file-chip__content">
-          <span class="file-preview">${previewMarkup}</span>
-          <span class="file-meta min-w-0">
-            <span class="truncate">${escapeHtml(file.name)}</span>
-            <span class="text-plum/40 flex-shrink-0">(${formatBytes(file.size)})</span>
-          </span>
+        <span class="flex items-center gap-2 min-w-0">
+          <span>${fileEmoji(file)}</span>
+          <span class="truncate">${escapeHtml(file.name)}</span>
+          <span class="text-plum/40 flex-shrink-0">(${formatBytes(file.size)})</span>
         </span>
         <button type="button" data-index="${index}" aria-label="Retirer ce fichier">✕</button>
       `;
@@ -235,20 +190,7 @@
       }
 
       showStatus(data.message || 'Souvenir(s) envoyé(s) avec succès ✦', 'success');
-
-      (data.contributions || []).forEach((entry, index) => {
-        const file = selectedFiles[index];
-        if (file) {
-          const previewUrl = getFilePreviewUrl(file);
-          if (previewUrl && (entry.categorie === 'photo' || entry.categorie === 'video')) {
-            localPreviewById.set(entry.id, previewUrl);
-          }
-        }
-      });
-
-      selectedFiles.forEach((file) => revokeFilePreviewUrl(file));
       selectedFiles = [];
-      previewUrls.clear();
       renderFileList();
       await loadContributions();
     } catch (err) {
@@ -359,118 +301,6 @@
     });
   }
 
-  function openPreviewModal(url, type, downloadUrl) {
-    previewModalImage.classList.add('hidden');
-    previewModalVideo.classList.add('hidden');
-    previewModalAudio.classList.add('hidden');
-    previewModalAudio.pause();
-    previewModalAudio.removeAttribute('src');
-    previewDownloadLink.classList.add('hidden');
-
-    if (type === 'image') {
-      previewModalImage.src = url;
-      previewModalImage.classList.remove('hidden');
-    } else if (type === 'video') {
-      previewModalVideo.src = url;
-      previewModalVideo.classList.remove('hidden');
-      previewModalVideo.play().catch(() => {});
-    } else if (type === 'audio') {
-      previewModalAudio.src = url;
-      previewModalAudio.classList.remove('hidden');
-      previewModalAudio.load();
-    }
-
-    if (downloadUrl) {
-      previewDownloadLink.href = downloadUrl;
-      previewDownloadLink.setAttribute('download', downloadUrl.split('/').pop());
-      previewDownloadLink.classList.remove('hidden');
-    }
-
-    previewModalOverlay.classList.remove('hidden');
-  }
-
-  function closePreviewModal() {
-    previewModalOverlay.classList.add('hidden');
-    previewModalImage.src = '';
-    previewModalVideo.pause();
-    previewModalVideo.src = '';
-    previewModalAudio.pause();
-    previewModalAudio.src = '';
-    previewDownloadLink.href = '#';
-    previewDownloadLink.classList.add('hidden');
-  }
-
-  function getMediaCandidates(c) {
-    const rawCandidates = [localPreviewById.get(c.id), c.proxyUrl, c.url, c.previewUrl].filter(Boolean);
-    const candidates = [];
-    const seen = new Set();
-
-    rawCandidates.forEach((candidate) => {
-      const variants = [candidate, candidate.replace(/^https:\/\//i, 'http://'), candidate.replace(/^http:\/\//i, 'https://')];
-      variants.forEach((variant) => {
-        if (!variant || seen.has(variant)) return;
-        seen.add(variant);
-        candidates.push(variant);
-      });
-    });
-
-    return candidates;
-  }
-
-  function attachMediaFallback(element, candidates, type) {
-    let currentIndex = 0;
-
-    const tryNextSource = () => {
-      if (currentIndex >= candidates.length - 1) return;
-      currentIndex += 1;
-      if (type === 'image') {
-        element.src = candidates[currentIndex];
-      } else {
-        element.src = candidates[currentIndex];
-        element.load();
-      }
-    };
-
-    element.addEventListener('error', () => {
-      tryNextSource();
-    });
-
-    return candidates[0];
-  }
-
-  function getContributionPreview(c) {
-    const candidates = getMediaCandidates(c);
-    if (candidates.length === 0) return null;
-
-    if (c.categorie === 'photo' || c.categorie === 'video') {
-      const tag = c.categorie === 'photo' ? 'img' : 'video';
-      const extra = c.categorie === 'video' ? 'muted playsinline preload="metadata"' : 'alt="Miniature"';
-      const firstUrl = candidates[0];
-      const html = `<${tag} src="${firstUrl}" ${extra} class="feed-preview-${c.categorie === 'photo' ? 'image' : 'video'}" />`;
-      return {
-        html,
-        url: firstUrl,
-        type: c.categorie === 'photo' ? 'image' : 'video',
-        candidates,
-        downloadUrl: c.proxyUrl || c.url || firstUrl,
-      };
-    }
-
-    if (c.categorie === 'audio') {
-      const firstUrl = candidates[0];
-      const html = `<audio src="${firstUrl}" controls preload="metadata" class="feed-preview-audio"></audio>`;
-      return {
-        html,
-        url: firstUrl,
-        type: 'audio',
-        candidates,
-        downloadUrl: c.proxyUrl || c.url || firstUrl,
-      };
-    }
-
-    return null;
-  }
-
   function renderFeed(contributions) {
     feedList.innerHTML = '';
 
@@ -484,42 +314,10 @@
 
     contributions.forEach((c) => {
       const node = feedItemTemplate.content.cloneNode(true);
-      const iconEl = node.querySelector('.feed-icon');
-      const preview = getContributionPreview(c);
-
-      if (preview) {
-        iconEl.classList.add('feed-preview-shell');
-        iconEl.innerHTML = preview.html;
-        iconEl.setAttribute('role', 'button');
-        iconEl.setAttribute('tabindex', '0');
-
-        const mediaEl = iconEl.querySelector(preview.type === 'photo' ? 'img' : 'video');
-        if (mediaEl && preview.candidates && preview.candidates.length > 1) {
-          attachMediaFallback(mediaEl, preview.candidates, preview.type);
-        }
-
-        const clickHandler = () => openPreviewModal(preview.url, preview.type, preview.downloadUrl);
-        iconEl.addEventListener('click', clickHandler);
-        iconEl.addEventListener('keydown', (event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            clickHandler();
-          }
-        });
-      } else {
-        iconEl.textContent = categoryEmoji(c.categorie);
-      }
-
+      node.querySelector('.feed-icon').textContent = categoryEmoji(c.categorie);
       node.querySelector('.feed-author').textContent = c.prenom;
       node.querySelector('.feed-filename').textContent = c.nom_fichier_original;
       node.querySelector('.feed-date').textContent = formatDate(c.date);
-
-      const downloadLink = node.querySelector('.feed-download');
-      const downloadUrl = c.proxyUrl || c.url || '#';
-      downloadLink.href = downloadUrl;
-      downloadLink.setAttribute('download', c.nom_fichier_original || 'souvenir');
-      downloadLink.setAttribute('title', `Télécharger ${c.nom_fichier_original || 'le fichier'}`);
-
       feedList.appendChild(node);
     });
   }
@@ -536,18 +334,6 @@
       feedList.innerHTML = '<p class="text-center text-cream/50">Impossible de charger le registre pour le moment.</p>';
     }
   }
-
-  closePreviewBtn.addEventListener('click', closePreviewModal);
-
-  previewModalOverlay.addEventListener('click', (event) => {
-    if (event.target === previewModalOverlay) closePreviewModal();
-  });
-
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !previewModalOverlay.classList.contains('hidden')) {
-      closePreviewModal();
-    }
-  });
 
   // ---------------------------------------------------------------------
   // Démarrage

@@ -68,44 +68,6 @@
   padding: 0.6rem 0.9rem;
   font-size: 0.875rem;
 }
-.file-chip__content {
-  display: flex;
-  align-items: center;
-  gap: .75rem;
-  min-width: 0;
-  flex: 1;
-}
-.file-meta {
-  display: flex;
-  flex-direction: column;
-  gap: .15rem;
-  min-width: 0;
-  line-height: 1.3;
-}
-.file-preview {
-  width: 2.6rem;
-  height: 2.6rem;
-  border-radius: 0.65rem;
-  overflow: hidden;
-  background: rgba(44, 27, 51, 0.06);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.file-thumb {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-.file-thumb--fallback {
-  font-size: 1.1rem;
-  background: rgba(232, 178, 61, 0.12);
-}
-.video-thumb {
-  object-fit: cover;
-}
 .file-chip button {
   color: #9A4C55;
   font-weight: 600;
@@ -181,87 +143,6 @@
   justify-content: center;
   font-size: 1.1rem;
   background: rgba(232, 178, 61, 0.15);
-  flex-shrink: 0;
-  overflow: hidden;
-}
-.feed-preview-shell {
-  padding: 0;
-  background: rgba(44, 27, 51, 0.22);
-  cursor: pointer;
-}
-.feed-preview-image,
-.feed-preview-video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-.preview-modal-card {
-  position: relative;
-  max-width: min(90vw, 900px);
-  max-height: 85vh;
-  background: #1E1224;
-  border-radius: 1.25rem;
-  padding: 1rem;
-  box-shadow: 0 30px 60px rgba(0,0,0,0.38);
-}
-.preview-close {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  width: 2rem;
-  height: 2rem;
-  border-radius: 9999px;
-  background: rgba(255,255,255,0.12);
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.preview-media {
-  display: block;
-  max-width: 100%;
-  max-height: 80vh;
-  border-radius: 0.8rem;
-}
-.preview-image {
-  object-fit: contain;
-}
-.preview-video {
-  width: min(80vw, 820px);
-  background: #000;
-}
-.preview-audio {
-  width: min(80vw, 480px);
-  margin: 1.5rem auto 0.75rem;
-  background: rgba(255,255,255,0.06);
-  border-radius: 0.75rem;
-}
-.preview-download,
-.feed-download {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.5rem 0.8rem;
-  border-radius: 9999px;
-  background: rgba(232, 178, 61, 0.15);
-  color: #FBF3E7;
-  text-decoration: none;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  transition: background .2s ease, transform .2s ease;
-}
-.preview-download {
-  margin-top: 0.9rem;
-  background: #3E8983;
-}
-.preview-download:hover,
-.feed-download:hover {
-  transform: translateY(-1px);
-  text-decoration: none;
-}
-.feed-download {
   flex-shrink: 0;
 }
 
