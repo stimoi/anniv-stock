@@ -33,7 +33,7 @@
   }
 </script>
 
-<link rel="stylesheet" href="/css/style.css?v=3" />
+<link rel="stylesheet" href="/css/style.css" />
 </head>
 <body class="bg-plum text-cream font-body min-h-screen antialiased">
 
@@ -113,7 +113,7 @@
     <!-- ============ FIL D'ACTUALITÉ ============ -->
     <section class="mt-16">
       <h2 class="font-display text-2xl sm:text-3xl font-semibold text-cream text-center">Le fil des dépôts</h2>
-      <p class="text-cream/60 text-center text-sm mt-2 mb-8">Chaque envoi, dans l'ordre — clique sur un souvenir pour l'ouvrir ou le télécharger.</p>
+      <p class="text-cream/60 text-center text-sm mt-2 mb-8">Chaque envoi, dans l'ordre.</p>
 
       <ol id="feedList" class="space-y-4"></ol>
     </section>
@@ -145,44 +145,20 @@
     </div>
   </div>
 
-  <!-- ============ VISIONNEUSE (aperçu plein écran) ============ -->
-  <div id="viewerOverlay" class="viewer-overlay hidden" role="dialog" aria-modal="true" aria-label="Aperçu du souvenir">
-    <button id="viewerClose" class="viewer-close" type="button" aria-label="Fermer l'aperçu">✕</button>
-    <button id="viewerPrev" class="viewer-nav viewer-prev" type="button" aria-label="Souvenir précédent">‹</button>
-    <button id="viewerNext" class="viewer-nav viewer-next" type="button" aria-label="Souvenir suivant">›</button>
-
-    <figure class="viewer-figure">
-      <div id="viewerStage" class="viewer-stage"></div>
-      <figcaption class="viewer-caption">
-        <div class="min-w-0">
-          <p id="viewerFilename" class="viewer-filename"></p>
-          <p id="viewerMeta" class="viewer-meta"></p>
-        </div>
-        <a id="viewerDownload" class="viewer-download" download>⬇ Télécharger</a>
-      </figcaption>
-    </figure>
-  </div>
-
   <!-- Template pour un item du fil (utilisé par JS) -->
   <template id="feedItemTemplate">
     <li class="feed-item">
-      <button type="button" class="feed-thumb" aria-label="Ouvrir l'aperçu">
-        <span class="feed-icon"></span>
-      </button>
+      <div class="feed-icon"></div>
       <div class="flex-1 min-w-0">
         <p class="text-sm text-cream/90">
           <strong class="feed-author font-semibold"></strong>
           a déposé <span class="feed-filename font-medium"></span>
         </p>
         <p class="text-xs text-cream/40 feed-date mt-0.5"></p>
-        <div class="feed-actions">
-          <button type="button" class="feed-action feed-preview">Voir</button>
-          <a class="feed-action feed-download" download>Télécharger</a>
-        </div>
       </div>
     </li>
   </template>
 
-  <script src="/js/app.js?v=3"></script>
+  <script src="/js/app.js"></script>
 </body>
 </html>

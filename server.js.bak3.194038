@@ -306,17 +306,7 @@ async function serveContributionFile(req, res, { asDownload }) {
       if (upstream.ok && upstream.body) {
         const length = upstream.headers.get('content-length');
         if (length) res.setHeader('Content-Length', length);
-
-        // Le flux distant peut se couper en cours de route (ECONNRESET) : sans
-        // gestionnaire, l'erreur remonte en 'error' non capté et tue le process.
-        const upstreamStream = Readable.fromWeb(upstream.body);
-        upstreamStream.on('error', (streamErr) => {
-          console.error(`⚠️  Flux interrompu pour ${contribution.nom_fichier_serveur} :`, streamErr.message);
-          res.destroy();
-        });
-        res.on('close', () => upstreamStream.destroy());
-
-        return upstreamStream.pipe(res);
+        return Readable.fromWeb(upstream.body).pipe(res);
       }
       console.warn(`⚠️  URL publique indisponible (HTTP ${upstream.status}), repli ${STORAGE_MODE} pour ${contribution.nom_fichier_serveur}.`);
     } catch (err) {
@@ -570,16 +560,6 @@ async function startServer() {
   sweepStaleUploads();
   setInterval(sweepStaleUploads, 10 * 60 * 1000);
 }
-
-// Dernier filet : on journalise au lieu de laisser le process mourir en pleine fête.
-// Les erreurs réseau sur un flux sortant ne justifient pas de couper le site.
-process.on('uncaughtException', (err) => {
-  console.error('⚠️  Exception non capturée (le serveur reste en ligne) :', err);
-});
-
-process.on('unhandledRejection', (reason) => {
-  console.error('⚠️  Promesse rejetée non gérée :', reason);
-});
 
 startServer().catch((err) => {
   console.error('❌ Impossible de démarrer le serveur :', err);

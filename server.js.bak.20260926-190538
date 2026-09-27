@@ -7,7 +7,6 @@ const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-const { Readable } = require('stream');
 
 const ftp = require('basic-ftp');
 const SftpClient = require('ssh2-sftp-client');
@@ -18,8 +17,6 @@ const SftpClient = require('ssh2-sftp-client');
 const PORT = process.env.PORT || 3000;
 const STORAGE_MODE = (process.env.STORAGE_MODE || 'SFTP').toUpperCase(); // 'FTP' | 'SFTP'
 const MAX_FILE_SIZE_MB = parseInt(process.env.MAX_FILE_SIZE_MB || '200', 10);
-// URL HTTP publique qui expose le dossier distant (aperçu direct, sans repasser par le serveur)
-const PUBLIC_FILE_BASE_URL = (process.env.PUBLIC_FILE_BASE_URL || '').trim().replace(/\/+$/, '');
 
 const DATA_DIR = path.join(__dirname, 'data');
 const CONTRIBUTIONS_FILE = path.join(DATA_DIR, 'contributions.json');
@@ -86,27 +83,6 @@ const upload = multer({
   storage,
   limits: { fileSize: MAX_FILE_SIZE_MB * 1024 * 1024 },
 });
-
-// Un envoi interrompu laisse son fichier temporaire derrière lui : on balaie
-// périodiquement ceux qui ne peuvent plus appartenir à une requête en cours.
-const TMP_MAX_AGE_MS = 30 * 60 * 1000;
-
-async function sweepStaleUploads() {
-  try {
-    const now = Date.now();
-    const entries = await fsp.readdir(TMP_UPLOAD_DIR);
-    for (const name of entries) {
-      const filePath = path.join(TMP_UPLOAD_DIR, name);
-      const stat = await fsp.stat(filePath).catch(() => null);
-      if (stat && stat.isFile() && now - stat.mtimeMs > TMP_MAX_AGE_MS) {
-        await fsp.unlink(filePath).catch(() => {});
-        console.warn(`🧹 Fichier temporaire orphelin supprimé : ${name}`);
-      }
-    }
-  } catch (err) {
-    console.error('⚠️  Balayage des fichiers temporaires impossible :', err.message);
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Utilitaires
@@ -205,148 +181,6 @@ async function uploadToRemoteStorage(localPath, remoteFilename) {
   return uploadViaSftp(localPath, remoteFilename);
 }
 
-// ---------------------------------------------------------------------------
-// Aperçu et téléchargement des souvenirs déposés
-// ---------------------------------------------------------------------------
-
-function ftpAccessOptions() {
-  return {
-    host: process.env.FTP_HOST,
-    port: parseInt(process.env.FTP_PORT || '21', 10),
-    user: process.env.FTP_USER,
-    password: process.env.FTP_PASSWORD,
-    secure: process.env.FTP_SECURE === 'true',
-  };
-}
-
-async function sftpConnectOptions() {
-  const options = {
-    host: process.env.SFTP_HOST,
-    port: parseInt(process.env.SFTP_PORT || '22', 10),
-    username: process.env.SFTP_USER,
-  };
-  if (process.env.SFTP_PRIVATE_KEY_PATH) {
-    options.privateKey = await fsp.readFile(process.env.SFTP_PRIVATE_KEY_PATH);
-  } else {
-    options.password = process.env.SFTP_PASSWORD;
-  }
-  return options;
-}
-
-// URL directe du fichier sur le serveur web distant, si le dossier y est exposé
-function buildPublicFileUrl(remoteFilename) {
-  if (!PUBLIC_FILE_BASE_URL) return null;
-  return `${PUBLIC_FILE_BASE_URL}/${encodeURIComponent(remoteFilename)}`;
-}
-
-// Ajoute à une contribution les URL utilisées par le front pour l'aperçu et le téléchargement
-function decorateContribution(entry) {
-  return {
-    ...entry,
-    url_apercu: buildPublicFileUrl(entry.nom_fichier_serveur) || `/api/files/${entry.id}`,
-    url_telechargement: `/api/files/${entry.id}/download`,
-  };
-}
-
-// Récupère le fichier distant dans un fichier temporaire local (repli quand l'URL publique échoue)
-async function downloadRemoteFileToTemp(remoteFilename) {
-  const localPath = path.join(TMP_UPLOAD_DIR, `view-${uuidv4()}${path.extname(remoteFilename)}`);
-
-  if (STORAGE_MODE === 'FTP') {
-    const client = new ftp.Client();
-    client.ftp.verbose = false;
-    try {
-      await client.access(ftpAccessOptions());
-      await ensureRemoteDirFtp(client, process.env.FTP_REMOTE_DIR || '/');
-      await client.downloadTo(localPath, remoteFilename);
-    } finally {
-      client.close();
-    }
-  } else {
-    const sftp = new SftpClient();
-    try {
-      await sftp.connect(await sftpConnectOptions());
-      const remoteDir = (process.env.SFTP_REMOTE_DIR || '/').replace(/\/$/, '');
-      await sftp.get(`${remoteDir}/${remoteFilename}`, localPath);
-    } finally {
-      await sftp.end();
-    }
-  }
-
-  return localPath;
-}
-
-// En-tête Content-Disposition : restitue le nom d'origine, avec repli ASCII pour les vieux clients
-function contentDispositionFor(filename, asDownload) {
-  const asciiName = filename
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^\x20-\x7E]/g, '_')
-    .replace(/["\\]/g, '_');
-  const type = asDownload ? 'attachment' : 'inline';
-  return `${type}; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
-}
-
-// Sert le fichier d'une contribution, en aperçu (inline) ou en téléchargement (attachment).
-// Source privilégiée : l'URL publique du serveur web. Repli : téléchargement FTP/SFTP.
-async function serveContributionFile(req, res, { asDownload }) {
-  const contribution = readContributions().find((c) => c.id === req.params.id);
-  if (!contribution) {
-    return res.status(404).json({ success: false, message: 'Souvenir introuvable.' });
-  }
-
-  const displayName = contribution.nom_fichier_original || contribution.nom_fichier_serveur;
-  res.type(path.extname(displayName) || 'application/octet-stream');
-  res.setHeader('Content-Disposition', contentDispositionFor(displayName, asDownload));
-  res.setHeader('Cache-Control', 'private, max-age=3600');
-
-  const publicUrl = buildPublicFileUrl(contribution.nom_fichier_serveur);
-  if (publicUrl) {
-    try {
-      const upstream = await fetch(publicUrl);
-      if (upstream.ok && upstream.body) {
-        const length = upstream.headers.get('content-length');
-        if (length) res.setHeader('Content-Length', length);
-
-        // Le flux distant peut se couper en cours de route (ECONNRESET) : sans
-        // gestionnaire, l'erreur remonte en 'error' non capté et tue le process.
-        const upstreamStream = Readable.fromWeb(upstream.body);
-        upstreamStream.on('error', (streamErr) => {
-          console.error(`⚠️  Flux interrompu pour ${contribution.nom_fichier_serveur} :`, streamErr.message);
-          res.destroy();
-        });
-        res.on('close', () => upstreamStream.destroy());
-
-        return upstreamStream.pipe(res);
-      }
-      console.warn(`⚠️  URL publique indisponible (HTTP ${upstream.status}), repli ${STORAGE_MODE} pour ${contribution.nom_fichier_serveur}.`);
-    } catch (err) {
-      console.warn(`⚠️  URL publique injoignable (${err.message}), repli ${STORAGE_MODE} pour ${contribution.nom_fichier_serveur}.`);
-    }
-  }
-
-  let tempPath;
-  try {
-    tempPath = await downloadRemoteFileToTemp(contribution.nom_fichier_serveur);
-    const stat = await fsp.stat(tempPath);
-    res.setHeader('Content-Length', stat.size);
-    await new Promise((resolve, reject) => {
-      const stream = fs.createReadStream(tempPath);
-      stream.on('error', reject);
-      res.on('close', resolve);
-      stream.pipe(res).on('finish', resolve);
-    });
-  } catch (err) {
-    console.error(`Erreur de lecture ${STORAGE_MODE} pour ${contribution.nom_fichier_serveur} :`, err.message);
-    if (!res.headersSent) {
-      res.status(502).json({ success: false, message: 'Fichier momentanément indisponible.' });
-    } else {
-      res.destroy();
-    }
-  } finally {
-    if (tempPath) await fsp.unlink(tempPath).catch(() => {});
-  }
-}
-
 async function downloadRemoteContributions() {
   if (!hasRemoteStorageConfiguration()) return null;
 
@@ -432,9 +266,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 // --- Route : liste des contributions (registre public) ---
 app.get('/api/contributions', (req, res) => {
   try {
-    const contributions = readContributions()
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .map(decorateContribution);
+    const contributions = readContributions().sort(
+      (a, b) => new Date(b.date) - new Date(a.date)
+    );
     res.json({ success: true, contributions });
   } catch (err) {
     console.error(err);
@@ -497,35 +331,14 @@ app.post('/api/upload', upload.array('files', 20), async (req, res) => {
   res.json({
     success: true,
     message: `${results.length} fichier(s) envoyé(s) avec succès.`,
-    contributions: results.map(decorateContribution),
+    contributions: results,
     errors: errors.length ? errors : undefined,
   });
 });
 
-// --- Route : aperçu d'un souvenir (affichage direct dans le navigateur) ---
-app.get('/api/files/:id', (req, res) => serveContributionFile(req, res, { asDownload: false }));
-
-// --- Route : téléchargement d'un souvenir (nom de fichier original restitué) ---
-app.get('/api/files/:id/download', (req, res) => serveContributionFile(req, res, { asDownload: true }));
-
 // --- Route de santé (utile pour vérifier que le serveur tourne) ---
 app.get('/api/health', (req, res) => {
-  res.json({ success: true, storageMode: STORAGE_MODE, maxFileSizeMb: MAX_FILE_SIZE_MB });
-});
-
-// --- Erreurs multer : renvoyées en JSON, sinon le front reçoit du HTML ---
-app.use((err, req, res, next) => {
-  if (!(err instanceof multer.MulterError)) return next(err);
-
-  // Le fichier partiel déjà écrit sur le disque n'a plus d'utilité
-  Promise.all((req.files || []).map((f) => fsp.unlink(f.path).catch(() => {}))).catch(() => {});
-
-  const message = err.code === 'LIMIT_FILE_SIZE'
-    ? `Fichier trop volumineux : maximum ${MAX_FILE_SIZE_MB} Mo par fichier.`
-    : `Envoi refusé par le serveur (${err.code}).`;
-
-  console.warn(`⚠️  Upload refusé (${err.code}) :`, err.message);
-  res.status(413).json({ success: false, message });
+  res.json({ success: true, storageMode: STORAGE_MODE });
 });
 
 function listenOnAvailablePort(port) {
@@ -566,20 +379,7 @@ async function startServer() {
     saveContributionsToRemote();
     setInterval(saveContributionsToRemote, 30 * 1000);
   }, 20 * 1000);
-
-  sweepStaleUploads();
-  setInterval(sweepStaleUploads, 10 * 60 * 1000);
 }
-
-// Dernier filet : on journalise au lieu de laisser le process mourir en pleine fête.
-// Les erreurs réseau sur un flux sortant ne justifient pas de couper le site.
-process.on('uncaughtException', (err) => {
-  console.error('⚠️  Exception non capturée (le serveur reste en ligne) :', err);
-});
-
-process.on('unhandledRejection', (reason) => {
-  console.error('⚠️  Promesse rejetée non gérée :', reason);
-});
 
 startServer().catch((err) => {
   console.error('❌ Impossible de démarrer le serveur :', err);

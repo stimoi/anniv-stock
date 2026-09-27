@@ -37,18 +37,6 @@
 
   let selectedFiles = [];
   let allContributions = [];
-  let maxFileSizeMb = 95; // valeur de repli, remplacée par celle du serveur
-
-  // La limite réelle vient du serveur : on refuse un fichier trop gros avant de l'envoyer
-  async function loadServerConfig() {
-    try {
-      const res = await fetch('/api/health');
-      const data = await res.json();
-      if (data.maxFileSizeMb) maxFileSizeMb = data.maxFileSizeMb;
-    } catch (err) {
-      console.warn('Limite de taille du serveur indisponible, valeur par défaut conservée.', err);
-    }
-  }
 
   const AVATAR_COLORS = ['#F2A6B0', '#E8B23D', '#3E8983', '#C97B84', '#D9A441', '#5AA39C'];
 
@@ -131,18 +119,9 @@
     fileInput.value = '';
   });
 
-  // Chaque fichier choisi porte son propre état d'envoi, pour un suivi individuel
   function addFiles(fileListObj) {
-    const newEntries = Array.from(fileListObj).map((file) => {
-      const tooBig = file.size > maxFileSizeMb * 1024 * 1024;
-      return {
-        file,
-        status: tooBig ? 'error' : 'pending',
-        progress: 0,
-        error: tooBig ? `Trop volumineux (maximum ${maxFileSizeMb} Mo).` : null,
-      };
-    });
-    selectedFiles = selectedFiles.concat(newEntries);
+    const newFiles = Array.from(fileListObj);
+    selectedFiles = selectedFiles.concat(newFiles);
     renderFileList();
   }
 
@@ -164,36 +143,19 @@
     return '💌';
   }
 
-  function statusLabel(entry) {
-    if (entry.status === 'done') return '<span class="chip-done">✓ envoyé</span>';
-    if (entry.status === 'sending') return `<span class="chip-sending">${entry.progress}%</span>`;
-    if (entry.status === 'error') return `<span class="chip-error">${escapeHtml(entry.error || 'échec')}</span>`;
-    return '';
-  }
-
   function renderFileList() {
     fileListEl.innerHTML = '';
-    selectedFiles.forEach((entry, index) => {
-      const { file } = entry;
+    selectedFiles.forEach((file, index) => {
       const li = document.createElement('li');
-      li.className = `file-chip file-chip-${entry.status}`;
+      li.className = 'file-chip';
       li.innerHTML = `
-        <span class="flex items-center gap-2 min-w-0 flex-1">
+        <span class="flex items-center gap-2 min-w-0">
           <span>${fileEmoji(file)}</span>
           <span class="truncate">${escapeHtml(file.name)}</span>
           <span class="text-plum/40 flex-shrink-0">(${formatBytes(file.size)})</span>
-          ${statusLabel(entry)}
         </span>
         <button type="button" data-index="${index}" aria-label="Retirer ce fichier">✕</button>
       `;
-
-      if (entry.status === 'sending') {
-        const bar = document.createElement('span');
-        bar.className = 'chip-progress';
-        bar.style.width = `${entry.progress}%`;
-        li.appendChild(bar);
-      }
-
       li.querySelector('button').addEventListener('click', () => removeFile(index));
       fileListEl.appendChild(li);
     });
@@ -208,59 +170,6 @@
   // ---------------------------------------------------------------------
   // Envoi des fichiers au backend
   // ---------------------------------------------------------------------
-  // Un fichier par requête : sur une connexion instable, une coupure ne fait
-  // perdre que le fichier en cours au lieu de tout le lot.
-  function uploadOne(entry, prenom) {
-    return new Promise((resolve) => {
-      const formData = new FormData();
-      formData.append('prenom', prenom);
-      formData.append('files', entry.file);
-
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/upload');
-      xhr.timeout = 15 * 60 * 1000;
-
-      xhr.upload.addEventListener('progress', (event) => {
-        if (!event.lengthComputable) return;
-        entry.progress = Math.round((event.loaded / event.total) * 100);
-        renderFileList();
-      });
-
-      xhr.addEventListener('load', () => {
-        let data = null;
-        try { data = JSON.parse(xhr.responseText); } catch (_) { /* réponse non JSON */ }
-
-        if (xhr.status >= 200 && xhr.status < 300 && data && data.success) {
-          entry.status = 'done';
-          entry.progress = 100;
-        } else {
-          entry.status = 'error';
-          entry.error = (data && data.message)
-            || (xhr.status === 413 ? 'Fichier trop volumineux.' : `Erreur serveur (${xhr.status}).`);
-        }
-        resolve();
-      });
-
-      xhr.addEventListener('error', () => {
-        entry.status = 'error';
-        entry.error = 'Connexion interrompue.';
-        resolve();
-      });
-
-      xhr.addEventListener('timeout', () => {
-        entry.status = 'error';
-        entry.error = 'Envoi trop long, expiré.';
-        resolve();
-      });
-
-      entry.status = 'sending';
-      entry.progress = 0;
-      entry.error = null;
-      renderFileList();
-      xhr.send(formData);
-    });
-  }
-
   uploadForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
@@ -270,39 +179,36 @@
       return;
     }
 
-    // Les fichiers trop volumineux sont écartés avant tout envoi
-    const toSend = selectedFiles.filter((entry) => entry.status === 'pending' || entry.status === 'error')
-      .filter((entry) => entry.file.size <= maxFileSizeMb * 1024 * 1024);
-
-    if (toSend.length === 0) {
+    if (selectedFiles.length === 0) {
       showStatus('Choisis au moins un fichier avant d\'envoyer 🙂', 'warn');
       return;
     }
 
-    setSubmitting(true);
+    const formData = new FormData();
+    formData.append('prenom', prenom);
+    selectedFiles.forEach((file) => formData.append('files', file));
 
-    for (let i = 0; i < toSend.length; i++) {
-      showStatus(`Envoi ${i + 1}/${toSend.length} : ${toSend[i].file.name}`, 'info');
-      await uploadOne(toSend[i], prenom);
+    setSubmitting(true);
+    showStatus('Envoi en cours… merci de patienter, les vidéos peuvent prendre un peu de temps.', 'info');
+
+    try {
+      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Une erreur est survenue pendant l\'envoi.');
+      }
+
+      showStatus(data.message || 'Souvenir(s) envoyé(s) avec succès ✦', 'success');
+      selectedFiles = [];
       renderFileList();
       await loadContributions();
+    } catch (err) {
+      console.error(err);
+      showStatus(err.message || 'Impossible d\'envoyer les fichiers pour le moment.', 'error');
+    } finally {
+      setSubmitting(false);
     }
-
-    const sent = toSend.filter((entry) => entry.status === 'done').length;
-    const failed = toSend.filter((entry) => entry.status === 'error');
-
-    if (failed.length === 0) {
-      showStatus(`${sent} souvenir(s) envoyé(s) avec succès ✦`, 'success');
-    } else if (sent === 0) {
-      showStatus(`Aucun envoi n'a abouti. Vérifie ta connexion puis réessaie — rien n'est perdu.`, 'error');
-    } else {
-      showStatus(`${sent} envoyé(s), ${failed.length} en échec. Appuie à nouveau sur « Envoyer » pour réessayer.`, 'warn');
-    }
-
-    // Les réussites quittent la liste, les échecs y restent pour être relancés
-    selectedFiles = selectedFiles.filter((entry) => entry.status !== 'done');
-    renderFileList();
-    setSubmitting(false);
   });
 
   function setSubmitting(isSubmitting) {
@@ -576,7 +482,6 @@
   // Démarrage
   // ---------------------------------------------------------------------
   initIdentification();
-  loadServerConfig();
   loadContributions();
   // Rafraîchit le fil régulièrement pour voir les dépôts des autres
   setInterval(loadContributions, 20000);

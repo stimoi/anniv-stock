@@ -87,27 +87,6 @@ const upload = multer({
   limits: { fileSize: MAX_FILE_SIZE_MB * 1024 * 1024 },
 });
 
-// Un envoi interrompu laisse son fichier temporaire derrière lui : on balaie
-// périodiquement ceux qui ne peuvent plus appartenir à une requête en cours.
-const TMP_MAX_AGE_MS = 30 * 60 * 1000;
-
-async function sweepStaleUploads() {
-  try {
-    const now = Date.now();
-    const entries = await fsp.readdir(TMP_UPLOAD_DIR);
-    for (const name of entries) {
-      const filePath = path.join(TMP_UPLOAD_DIR, name);
-      const stat = await fsp.stat(filePath).catch(() => null);
-      if (stat && stat.isFile() && now - stat.mtimeMs > TMP_MAX_AGE_MS) {
-        await fsp.unlink(filePath).catch(() => {});
-        console.warn(`🧹 Fichier temporaire orphelin supprimé : ${name}`);
-      }
-    }
-  } catch (err) {
-    console.error('⚠️  Balayage des fichiers temporaires impossible :', err.message);
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Utilitaires
 // ---------------------------------------------------------------------------
@@ -306,17 +285,7 @@ async function serveContributionFile(req, res, { asDownload }) {
       if (upstream.ok && upstream.body) {
         const length = upstream.headers.get('content-length');
         if (length) res.setHeader('Content-Length', length);
-
-        // Le flux distant peut se couper en cours de route (ECONNRESET) : sans
-        // gestionnaire, l'erreur remonte en 'error' non capté et tue le process.
-        const upstreamStream = Readable.fromWeb(upstream.body);
-        upstreamStream.on('error', (streamErr) => {
-          console.error(`⚠️  Flux interrompu pour ${contribution.nom_fichier_serveur} :`, streamErr.message);
-          res.destroy();
-        });
-        res.on('close', () => upstreamStream.destroy());
-
-        return upstreamStream.pipe(res);
+        return Readable.fromWeb(upstream.body).pipe(res);
       }
       console.warn(`⚠️  URL publique indisponible (HTTP ${upstream.status}), repli ${STORAGE_MODE} pour ${contribution.nom_fichier_serveur}.`);
     } catch (err) {
@@ -510,22 +479,7 @@ app.get('/api/files/:id/download', (req, res) => serveContributionFile(req, res,
 
 // --- Route de santé (utile pour vérifier que le serveur tourne) ---
 app.get('/api/health', (req, res) => {
-  res.json({ success: true, storageMode: STORAGE_MODE, maxFileSizeMb: MAX_FILE_SIZE_MB });
-});
-
-// --- Erreurs multer : renvoyées en JSON, sinon le front reçoit du HTML ---
-app.use((err, req, res, next) => {
-  if (!(err instanceof multer.MulterError)) return next(err);
-
-  // Le fichier partiel déjà écrit sur le disque n'a plus d'utilité
-  Promise.all((req.files || []).map((f) => fsp.unlink(f.path).catch(() => {}))).catch(() => {});
-
-  const message = err.code === 'LIMIT_FILE_SIZE'
-    ? `Fichier trop volumineux : maximum ${MAX_FILE_SIZE_MB} Mo par fichier.`
-    : `Envoi refusé par le serveur (${err.code}).`;
-
-  console.warn(`⚠️  Upload refusé (${err.code}) :`, err.message);
-  res.status(413).json({ success: false, message });
+  res.json({ success: true, storageMode: STORAGE_MODE });
 });
 
 function listenOnAvailablePort(port) {
@@ -566,20 +520,7 @@ async function startServer() {
     saveContributionsToRemote();
     setInterval(saveContributionsToRemote, 30 * 1000);
   }, 20 * 1000);
-
-  sweepStaleUploads();
-  setInterval(sweepStaleUploads, 10 * 60 * 1000);
 }
-
-// Dernier filet : on journalise au lieu de laisser le process mourir en pleine fête.
-// Les erreurs réseau sur un flux sortant ne justifient pas de couper le site.
-process.on('uncaughtException', (err) => {
-  console.error('⚠️  Exception non capturée (le serveur reste en ligne) :', err);
-});
-
-process.on('unhandledRejection', (reason) => {
-  console.error('⚠️  Promesse rejetée non gérée :', reason);
-});
 
 startServer().catch((err) => {
   console.error('❌ Impossible de démarrer le serveur :', err);
